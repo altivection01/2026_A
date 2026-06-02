@@ -1,0 +1,63 @@
+# =============================================================================
+# 2026_A — Agentic AI initiatives (4 notebooks)
+# =============================================================================
+# IMPORTANT — version coherence note:
+#   LangGraph 1.x requires langchain-core >= 1.0. The JH_AI_P4 RAG notebook
+#   pins the langchain 0.3.x line (ragas 0.3.0, langchain-community 0.3.x).
+#   To avoid disturbing that environment, install THESE notebooks in a FRESH
+#   virtual environment:
+#
+#       python3 -m venv .venv && source .venv/bin/activate
+#       pip install -r requirements.txt
+#
+#   The agent code uses only the stable API surface shared by LangGraph
+#   0.3 -> 1.x (StateGraph, create_react_agent, interrupt/Command,
+#   MemorySaver, add_messages), so either line works; we pin the 0.3/0.6
+#   line below for maximum doc/stability parity with your existing notebook.
+# -----------------------------------------------------------------------------
+
+# --- Core agent orchestration (REQUIRED) ---
+langgraph>=0.3.5,<1.0
+langchain>=0.3.20,<0.4
+langchain-core>=0.3.40,<0.4
+
+# --- LLM provider (default = Anthropic Claude; swap freely) ---
+langchain-anthropic>=0.3.0,<0.4
+langchain-openai>=0.3.0,<0.4          # for Azure OpenAI (AzureChatOpenAI)
+
+# --- Problem 3: RAG + GraphRAG (REQUIRED for notebook 03) ---
+sentence-transformers>=3,<6           # local embeddings + cross-encoder rerank
+chromadb>=0.5,<2                      # vector store (used directly, no wrapper)
+networkx>=3                          # in-memory knowledge graph (Neo4j optional)
+
+# --- Utilities (REQUIRED) ---
+pydantic>=2.7
+pandas>=2
+requests>=2.31
+rich>=13                             # pretty console / tables in notebooks
+tabulate>=0.9
+matplotlib>=3.8
+python-dotenv>=1
+
+# =============================================================================
+# OPTIONAL — uncomment to wire the REAL integrations (the "# REAL API" stubs).
+# All four notebooks run end-to-end WITHOUT these (everything is mocked).
+# =============================================================================
+
+# -- Problem 3: persistent / production GraphRAG with Neo4j --
+# langchain-neo4j>=0.4.0,<0.5
+# neo4j>=5.20
+# rank-bm25>=0.2.2                    # hybrid (BM25 + dense) retrieval
+
+# -- Problem 1: Azure AVD / Compute / Monitor --
+# azure-identity>=1.16
+# azure-mgmt-compute>=31
+# azure-mgmt-desktopvirtualization>=1.1
+# azure-monitor-query>=1.4
+# msgraph-sdk>=1.0                    # Entra ID users + Teams notifications
+
+# -- Problem 2 / 4: ServiceNow, Tanium, firewalls, SWG, EDR --
+# pysnow>=0.7                        # ServiceNow (or just use requests)
+# pan-os-python>=1.12               # Palo Alto NGFW
+#   (Tanium, Cisco Umbrella, Infoblox, Zscaler, Netskope, CrowdStrike,
+#    Microsoft Defender are all plain REST -> the `requests` lib is enough.)
