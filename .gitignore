@@ -223,3 +223,6 @@ config.json
 
 # Notebook backups (ad-hoc safety copies)
 *.bak*
+
+# Notebook builder scaffolding (generates the .ipynb files; not a deliverable)
+_build/
