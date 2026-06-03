@@ -56,8 +56,9 @@ python-dotenv>=1
 # azure-monitor-query>=1.4
 # msgraph-sdk>=1.0                    # Entra ID users + Teams notifications
 
-# -- Problem 2 / 4: ServiceNow, Tanium, firewalls, SWG, EDR --
-# pysnow>=0.7                        # ServiceNow (or just use requests)
-# pan-os-python>=1.12               # Palo Alto NGFW
-#   (Tanium, Cisco Umbrella, Infoblox, Zscaler, Netskope, CrowdStrike,
-#    Microsoft Defender are all plain REST -> the `requests` lib is enough.)
+# -- Problems 1/2: ServiceNow + Tanium (plain REST -> `requests` is enough) --
+# pysnow>=0.7                        # ServiceNow (optional; requests works too)
+
+# -- Problem 4: CrowdStrike Falcon Custom IOC management --
+# crowdstrike-falconpy>=1.4          # FalconPy SDK (IOC service collection)
+#   (or drive the REST API directly with requests / curl; PSFalcon for PowerShell)

@@ -11,7 +11,7 @@ swap a mock for a live call without restructuring anything.
 | 1 | [`01_AVD_Idle_Machine_Agent.ipynb`](01_AVD_Idle_Machine_Agent.ipynb) | Discover idle Azure Virtual Desktop hosts, notify owners, and decommission unneeded machines to stop wasted spend. |
 | 2 | [`02_Tanium_Decommission_Agent.ipynb`](02_Tanium_Decommission_Agent.ipynb) | When a workstation goes **Retired / In Stock**, verify it's offline, purge it from Tanium, and delete it from the asset DB. |
 | 3 | [`03_CVE_Prioritization_RAG_GraphRAG_Agent.ipynb`](03_CVE_Prioritization_RAG_GraphRAG_Agent.ipynb) | Give the agent a CVE (or a list); it prioritizes by real-world risk and returns grounded remediations. Adapts the RAG + GraphRAG methods from `JH_AI_P4/FullCode_Notebook.ipynb`. |
-| 4 | [`04_Site_AllowDeny_Orchestration_Agent.ipynb`](04_Site_AllowDeny_Orchestration_Agent.ipynb) | Fulfill a GIS allow/deny-list request end-to-end across DNS, NGFW, Cloud Proxy/SWG, and Endpoint/EDR. |
+| 4 | [`04_CrowdStrike_AllowDeny_Agent.ipynb`](04_CrowdStrike_AllowDeny_Agent.ipynb) | Fulfill a GIS allow/deny-list request end-to-end through **CrowdStrike Falcon** Custom IOC management (domain/IP block & allow, via FalconPy/API/CLI). |
 
 ## Design philosophy (shared across all four)
 
@@ -82,7 +82,7 @@ back to a deterministic stub. Set one LLM key to see real agent reasoning.
 ├── 01_AVD_Idle_Machine_Agent.ipynb
 ├── 02_Tanium_Decommission_Agent.ipynb
 ├── 03_CVE_Prioritization_RAG_GraphRAG_Agent.ipynb
-├── 04_Site_AllowDeny_Orchestration_Agent.ipynb
+├── 04_CrowdStrike_AllowDeny_Agent.ipynb
 ├── requirements.txt
 ├── .env.example
 └── README.md
