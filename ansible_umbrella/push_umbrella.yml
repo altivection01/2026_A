@@ -1,0 +1,56 @@
+---
+# Push the entries in vars/allowdeny.yml to Cisco Umbrella destination lists.
+#   Dry run (no creds):     ansible-playbook push_umbrella.yml -e mock=true --check
+#   Simulate (no creds):    ansible-playbook push_umbrella.yml -e mock=true
+#   Live:                   ansible-playbook push_umbrella.yml        (creds in group_vars/all.yml)
+- name: Push allow/deny entries to Cisco Umbrella
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/allowdeny.yml
+  vars:
+    mock: false
+    strict: false
+  tasks:
+    - name: Apply each entry to Umbrella
+      umbrella_destination:
+        api_base: "{{ umbrella_api_base | default('https://api.umbrella.com') }}"
+        api_key: "{{ umbrella_api_key | default(omit) }}"
+        api_secret: "{{ umbrella_api_secret | default(omit) }}"
+        block_list_id: "{{ umbrella_block_list_id | default(omit) }}"
+        allow_list_id: "{{ umbrella_allow_list_id | default(omit) }}"
+        destination: "{{ item.destination }}"
+        action: "{{ item.action }}"
+        comment: "{{ item.comment | default('') }}"
+        state: "{{ item.state | default('present') }}"
+        mock: "{{ mock | bool }}"
+      loop: "{{ umbrella_entries }}"
+      loop_control:
+        label: "{{ item.action }} {{ item.destination }}"
+      register: umbrella_results
+
+    - name: Summary (status per entry)
+      vars:
+        line: "{{ '%-12s %-32s %s' | format(item.status, item.destination, item.reason) }}"
+      ansible.builtin.debug:
+        msg: "{{ line }}"
+      loop: "{{ umbrella_results.results }}"
+      loop_control:
+        label: "{{ item.destination }}"
+
+    - name: Counts
+      ansible.builtin.debug:
+        msg: >-
+          enforced={{ umbrella_results.results | selectattr('status','in',['enforced','would-enforce']) | list | length }}
+          exists={{ umbrella_results.results | selectattr('status','eq','exists') | list | length }}
+          refused={{ umbrella_results.results | selectattr('status','eq','refused') | list | length }}
+          escalated={{ umbrella_results.results | selectattr('status','eq','escalated') | list | length }}
+
+    - name: Fail when strict=true and anything was refused/escalated
+      ansible.builtin.assert:
+        that:
+          - umbrella_results.results | selectattr('status','in',['refused','escalated']) | list | length == 0
+        fail_msg: "Some entries were refused/escalated — see the summary above."
+        success_msg: "No policy refusals/escalations."
+      when: strict | bool

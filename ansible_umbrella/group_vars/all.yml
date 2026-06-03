@@ -1,0 +1,16 @@
+# Cisco Umbrella connection settings (auto-loaded for all hosts).
+# Fill these for LIVE runs. Encrypt the secret with ansible-vault:
+#   ansible-vault encrypt_string 'THE_SECRET' --name 'umbrella_api_secret'
+# and paste the result below. Leave blank to use mock mode (-e mock=true).
+
+umbrella_api_base: "https://api.umbrella.com"
+umbrella_api_key: ""            # Umbrella API key  (Admin > API Keys, scope: Policies)
+umbrella_api_secret: ""         # vault me
+
+# Optional: pin specific Destination List IDs. If omitted, the connector
+# auto-discovers your GLOBAL block/allow lists via GET /policies/v2/destinationlists.
+# umbrella_block_list_id: 11111
+# umbrella_allow_list_id: 22222
+
+# Set true to fail the run if any entry is refused/escalated (good for CI).
+strict: false
