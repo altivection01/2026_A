@@ -1,0 +1,14 @@
+# Infoblox NIOS connection settings (auto-loaded for all hosts).
+# Fill these for LIVE runs. Encrypt the password with ansible-vault:
+#   ansible-vault encrypt_string 'THE_PASSWORD' --name 'infoblox_password'
+# and paste the result below. Leave blank to use mock mode (-e mock=true).
+
+infoblox_grid_host: "https://192.0.2.10"   # Grid Master URL
+infoblox_wapi_version: "v2.13"
+infoblox_username: "admin"
+infoblox_password: ""                       # vault me
+infoblox_validate_certs: false              # Grid Masters are often self-signed
+infoblox_rp_zone: "rpz.corp.local"          # an existing Response Policy Zone to write rules into
+
+# Set true to fail the run if any entry is refused/escalated (good for CI).
+strict: false

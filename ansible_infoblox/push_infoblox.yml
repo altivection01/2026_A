@@ -1,0 +1,57 @@
+---
+# Push the entries in vars/allowdeny.yml to Infoblox NIOS RPZ (Response Policy Zone).
+#   Dry run (no Grid Master):   ansible-playbook push_infoblox.yml -e mock=true --check
+#   Simulate (no Grid Master):  ansible-playbook push_infoblox.yml -e mock=true
+#   Live:                       ansible-playbook push_infoblox.yml   (creds in group_vars/all.yml)
+- name: Push allow/deny entries to Infoblox RPZ
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/allowdeny.yml
+  vars:
+    mock: false
+    strict: false
+  tasks:
+    - name: Apply each entry to Infoblox RPZ
+      infoblox_rpz:
+        grid_host: "{{ infoblox_grid_host | default(omit) }}"
+        wapi_version: "{{ infoblox_wapi_version | default('v2.13') }}"
+        username: "{{ infoblox_username | default(omit) }}"
+        password: "{{ infoblox_password | default(omit) }}"
+        validate_certs: "{{ infoblox_validate_certs | default(false) }}"
+        rp_zone: "{{ infoblox_rp_zone | default(omit) }}"
+        destination: "{{ item.destination }}"
+        action: "{{ item.action }}"
+        comment: "{{ item.comment | default('') }}"
+        state: "{{ item.state | default('present') }}"
+        mock: "{{ mock | bool }}"
+      loop: "{{ allowdeny_entries }}"
+      loop_control:
+        label: "{{ item.action }} {{ item.destination }}"
+      register: rpz_results
+
+    - name: Summary (status per entry)
+      vars:
+        line: "{{ '%-12s %-32s %s' | format(item.status, item.destination, item.reason) }}"
+      ansible.builtin.debug:
+        msg: "{{ line }}"
+      loop: "{{ rpz_results.results }}"
+      loop_control:
+        label: "{{ item.destination }}"
+
+    - name: Counts
+      ansible.builtin.debug:
+        msg: >-
+          applied={{ rpz_results.results | selectattr('status','in',['enforced','updated','would-enforce','would-update']) | list | length }}
+          exists={{ rpz_results.results | selectattr('status','eq','exists') | list | length }}
+          refused={{ rpz_results.results | selectattr('status','eq','refused') | list | length }}
+          escalated={{ rpz_results.results | selectattr('status','eq','escalated') | list | length }}
+
+    - name: Fail when strict=true and anything was refused/escalated
+      ansible.builtin.assert:
+        that:
+          - rpz_results.results | selectattr('status','in',['refused','escalated']) | list | length == 0
+        fail_msg: "Some entries were refused/escalated — see the summary above."
+        success_msg: "No policy refusals/escalations."
+      when: strict | bool

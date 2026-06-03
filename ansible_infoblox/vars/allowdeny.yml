@@ -1,0 +1,32 @@
+# =============================================================================
+# THE FILE YOU EDIT.  Add/remove entries, then run:  ansible-playbook push_infoblox.yml
+#   action: deny  -> blacklist  (RPZ Block / NXDOMAIN rule)
+#   action: allow -> whitelist  (RPZ Passthru rule)
+#   destination:  domain | full URL   (URLs are reduced to their domain; RPZ is path-blind)
+#   state:        present (default) | absent  (absent removes the RPZ rule)
+# Guardrails enforced by the connector:
+#   - a deny on critical infrastructure is REFUSED
+#   - a bare IP is ESCALATED (use an RPZ-IP rule or the firewall — see README)
+# (Same format as ansible_umbrella, except the top-level key is `allowdeny_entries`.)
+# =============================================================================
+allowdeny_entries:
+  - destination: malware-c2.example
+    action: deny
+    comment: "Confirmed C2 (INC0456)"
+
+  - destination: vendor-portal.partner.com
+    action: allow
+    comment: "AP vendor portal (passthru)"
+
+  - destination: "https://bad.example/login.php"
+    action: deny
+    comment: "Phishing kit (blocked at domain level)"
+
+  # --- these two demonstrate the guardrails (left in deliberately) ---
+  - destination: microsoft.com        # deny on critical infra -> REFUSED
+    action: deny
+    comment: "user thinks a popup is malware"
+
+  - destination: 203.0.113.66         # bare IP -> ESCALATED (RPZ-IP / firewall)
+    action: deny
+    comment: "perimeter scanner"
