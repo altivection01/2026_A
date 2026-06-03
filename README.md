@@ -11,9 +11,25 @@ swap a mock for a live call without restructuring anything.
 | 1 | [`01_AVD_Idle_Machine_Agent.ipynb`](01_AVD_Idle_Machine_Agent.ipynb) | Discover idle Azure Virtual Desktop hosts, notify owners, and decommission unneeded machines to stop wasted spend. |
 | 2 | [`02_Tanium_Decommission_Agent.ipynb`](02_Tanium_Decommission_Agent.ipynb) | When a workstation goes **Retired / In Stock**, verify it's offline, purge it from Tanium, and delete it from the asset DB. |
 | 3 | [`03_CVE_Prioritization_RAG_GraphRAG_Agent.ipynb`](03_CVE_Prioritization_RAG_GraphRAG_Agent.ipynb) | Give the agent a CVE (or a list); it prioritizes by real-world risk and returns grounded remediations. Adapts the RAG + GraphRAG methods from `JH_AI_P4/FullCode_Notebook.ipynb`. |
-| 4 | [`04_CrowdStrike_AllowDeny_Agent.ipynb`](04_CrowdStrike_AllowDeny_Agent.ipynb) | Fulfill a GIS allow/deny-list request end-to-end through **CrowdStrike Falcon** Custom IOC management (domain/IP block & allow, via FalconPy/API/CLI). |
+| 4 | [`04_Umbrella_AllowDeny_Agent.ipynb`](04_Umbrella_AllowDeny_Agent.ipynb) | Fulfill a GIS allow/deny-list request across a **hybrid DNS layer — Cisco Umbrella (cloud) + Infoblox NIOS RPZ (on-prem)** — fanning out to both with per-layer verify. |
 
-## Design philosophy (shared across all four)
+## Ansible automation for Problem 4
+
+Beyond the agentic notebook, Problem 4 also ships as two **production-style Ansible
+solutions** — the "edit one YAML → push" pattern, one per DNS control point:
+
+| Directory | Enforces via |
+|---|---|
+| [`ansible_umbrella/`](ansible_umbrella/) | **Cisco Umbrella** Destination Lists (cloud DNS) — block/allow domains, URLs, and IPs via the Umbrella REST API |
+| [`ansible_infoblox/`](ansible_infoblox/) | **Infoblox NIOS** RPZ (on-prem DNS) — block/allow domains & URLs (`record:rpz:cname`) and IPs/CIDRs (`record:rpz:cname:ipaddress`) via the WAPI |
+
+Each ships a custom Ansible module (the "connector") with idempotency and the same guardrails
+as the notebook (never block critical infra; refuse unsafe combinations), a
+`vars/allowdeny.yml` you edit, and a playbook that pushes and verifies. Both run
+credential-free in mock mode (`ansible-playbook ... -e mock=true`); see each directory's
+README. Run both for a cloud + on-prem hybrid.
+
+## Design philosophy (shared across the notebooks)
 
 These are **operations** problems where an agent takes real, sometimes destructive,
 action. The notebooks therefore follow a consistent, production-minded pattern rather
@@ -55,19 +71,20 @@ cd 2026_A
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env          # optional — notebooks run without it
-# put ANTHROPIC_API_KEY (or Azure OpenAI vars) in .env to enable real reasoning
+# optional — enable real LLM reasoning by exporting a key (else it runs a deterministic stub)
+export ANTHROPIC_API_KEY=sk-...     # or set Azure OpenAI vars; see build_llm() in any notebook
 
 jupyter lab                   # or: code . / jupyter notebook
 ```
 
-Running a notebook with **no `.env`** still works — infra is mocked and the LLM falls
-back to a deterministic stub. Set one LLM key to see real agent reasoning.
+Running with **no API key** still works — infra is mocked and the LLM falls back to a
+deterministic stub. Set one LLM key to see real agent reasoning. (Keys are read from
+environment variables, or an optional gitignored `config.local.json`.)
 
 ## Security notes
 
-- **No secrets are committed.** Keys load from environment / `.env` (gitignored) via
-  `get_secret()`. There are no hardcoded credentials in any notebook.
+- **No secrets are committed.** Keys load from environment variables (or a gitignored
+  `config.local.json`) via `get_secret()`. There are no hardcoded credentials anywhere.
 - ⚠️ The sibling `JH_AI_P4/config.json` contains **live API keys in plaintext**
   (Anthropic, OpenAI, Groq, Cerebras, Neo4j). Consider rotating them and moving to env
   vars / a secrets manager; they should not live in a repo file.
@@ -82,8 +99,9 @@ back to a deterministic stub. Set one LLM key to see real agent reasoning.
 ├── 01_AVD_Idle_Machine_Agent.ipynb
 ├── 02_Tanium_Decommission_Agent.ipynb
 ├── 03_CVE_Prioritization_RAG_GraphRAG_Agent.ipynb
-├── 04_CrowdStrike_AllowDeny_Agent.ipynb
+├── 04_Umbrella_AllowDeny_Agent.ipynb        # agentic notebook (Umbrella + Infoblox hybrid)
+├── ansible_umbrella/                        # Problem 4 — Ansible: Cisco Umbrella
+├── ansible_infoblox/                        # Problem 4 — Ansible: Infoblox RPZ + RPZ-IP
 ├── requirements.txt
-├── .env.example
 └── README.md
 ```

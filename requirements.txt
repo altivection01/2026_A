@@ -59,6 +59,8 @@ python-dotenv>=1
 # -- Problems 1/2: ServiceNow + Tanium (plain REST -> `requests` is enough) --
 # pysnow>=0.7                        # ServiceNow (optional; requests works too)
 
-# -- Problem 4: CrowdStrike Falcon Custom IOC management --
-# crowdstrike-falconpy>=1.4          # FalconPy SDK (IOC service collection)
-#   (or drive the REST API directly with requests / curl; PSFalcon for PowerShell)
+# -- Problem 4: Cisco Umbrella + Infoblox (hybrid DNS) — both are plain REST --
+#   Umbrella: OAuth2 client-credentials @ https://api.umbrella.com (Destination Lists)
+#   Infoblox: NIOS WAPI, HTTP Basic @ https://<grid-master>/wapi/v2.x/ (RPZ)
+#   The `requests` lib above covers both (+ curl). Optional Infoblox SDK:
+# infoblox-client>=0.6
