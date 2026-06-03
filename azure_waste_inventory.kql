@@ -1,0 +1,170 @@
+// =============================================================================
+// Azure Resource Graph (ARG) — Underutilized + Orphaned Resource Inventory
+// =============================================================================
+// Scope behavior: ARG queries automatically span EVERY subscription the calling
+//   identity can see, including Lighthouse-delegated tenants. No per-tenant loop
+//   needed. To restrict, add:  | where subscriptionId in ("sub-guid-1", "sub-guid-2")
+//
+// Run from:
+//   az graph query -q "<query>" --first 1000        (paginate with --skip)
+//   Search-AzGraph -Query "<query>" -First 1000
+//   Azure portal -> Resource Graph Explorer
+//
+// CAVEAT on Advisor field names: the keys inside
+//   properties.extendedProperties are NOT a formally stable, documented schema.
+//   Casing/keys drift between recommendation generations and tenants. Run
+//   Section 0 first against your own tenant to confirm key names before trusting
+//   the savings projections in Section 1.
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// SECTION 0 — Schema probe: dump raw extendedProperties for compute cost recs
+// Run this ONCE per tenant to verify the key names used in Section 1.
+// -----------------------------------------------------------------------------
+advisorresources
+| where type =~ "microsoft.advisor/recommendations"
+| where tostring(properties.category) =~ "Cost"
+| where tostring(properties.impactedField) in~ (
+    "Microsoft.Compute/virtualMachines",
+    "Microsoft.Compute/virtualMachineScaleSets")
+| project impactedValue = tostring(properties.impactedValue),
+          extendedProperties = properties.extendedProperties
+| limit 5
+
+
+// -----------------------------------------------------------------------------
+// SECTION 1 — Underutilized / idle compute (Advisor-driven, with savings)
+// Mirrors the portal "Right-size or shutdown underutilized VMs" recommendation.
+// Adjust the per-subscription CPU rule in Advisor settings, NOT here — this
+// query only reads whatever Advisor has already flagged.
+// -----------------------------------------------------------------------------
+advisorresources
+| where type =~ "microsoft.advisor/recommendations"
+| where tostring(properties.category) =~ "Cost"
+| where tostring(properties.impactedField) in~ (
+    "Microsoft.Compute/virtualMachines",
+    "Microsoft.Compute/virtualMachineScaleSets")
+| extend ext = properties.extendedProperties
+| project
+    resourceName       = tostring(properties.impactedValue),
+    resourceType       = tostring(properties.impactedField),
+    resourceId         = tolower(tostring(properties.resourceMetadata.resourceId)),
+    subscriptionId,
+    problem            = tostring(properties.shortDescription.problem),
+    solution           = tostring(properties.shortDescription.solution),
+    impact             = tostring(properties.impact),          // High / Medium / Low
+    recommendationType = tostring(ext.recommendationType),     // Shutdown / SKU change
+    currentSku         = tostring(ext.currentSku),
+    targetSku          = tostring(ext.targetSku),
+    estMonthlySavings  = todouble(ext.savingsAmount),
+    estAnnualSavings   = todouble(ext.annualSavingsAmount),
+    savingsCurrency    = tostring(ext.savingsCurrency)
+| order by estMonthlySavings desc
+
+
+// -----------------------------------------------------------------------------
+// SECTION 2 — Orphaned resources (not covered by the VM recommendation)
+// Each block is independently runnable. Savings are left null because ARG has
+// no price table; multiply against the SKU/size in your own rate card or pull
+// from the FinOps toolkit price sheet.
+// -----------------------------------------------------------------------------
+
+// 2a. Unattached managed disks (bill at full rate while detached)
+resources
+| where type =~ "microsoft.compute/disks"
+| where tostring(properties.diskState) =~ "Unattached"
+| where isnull(managedBy)                       // belt-and-suspenders: no owner
+| project resourceName = name, subscriptionId, resourceGroup, location,
+          skuName = tostring(sku.name),
+          sizeGiB = toint(properties.diskSizeGB),
+          resourceId = tolower(id)
+
+// 2b. Unattached public IP addresses
+resources
+| where type =~ "microsoft.network/publicipaddresses"
+| where isnull(properties.ipConfiguration)
+| where isnull(properties.natGateway)           // NAT GW IPs are "attached" indirectly
+| project resourceName = name, subscriptionId, resourceGroup, location,
+          skuName = tostring(sku.name),          // Standard SKU IPs bill even when idle
+          allocationMethod = tostring(properties.publicIPAllocationMethod),
+          resourceId = tolower(id)
+
+// 2c. Orphaned NICs (no VM, no private endpoint, nothing hosted)
+resources
+| where type =~ "microsoft.network/networkinterfaces"
+| where isnull(properties.virtualMachine)
+| where isnull(properties.privateEndpoint)
+| where tostring(properties.hostedWorkloads) in ("", "[]")
+| project resourceName = name, subscriptionId, resourceGroup, location,
+          resourceId = tolower(id)
+
+// 2d. Empty App Service plans (no apps running)
+resources
+| where type =~ "microsoft.web/serverfarms"
+| where toint(properties.numberOfSites) == 0
+| project resourceName = name, subscriptionId, resourceGroup, location,
+          skuTier = tostring(sku.tier), skuName = tostring(sku.name),
+          resourceId = tolower(id)
+
+// 2e. Unattached NSGs (referenced by no NIC and no subnet — config debt, not $)
+resources
+| where type =~ "microsoft.network/networksecuritygroups"
+| where isnull(properties.networkInterfaces)
+| where isnull(properties.subnets)
+| project resourceName = name, subscriptionId, resourceGroup, location,
+          resourceId = tolower(id)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 3 — Combined single-pass waste inventory (normalized schema)
+// One result set, one export. Advisor savings populate for compute; orphan rows
+// carry the sizing field you need to price them yourself.
+// -----------------------------------------------------------------------------
+advisorresources
+| where type =~ "microsoft.advisor/recommendations"
+| where tostring(properties.category) =~ "Cost"
+| where tostring(properties.impactedField) in~ (
+    "Microsoft.Compute/virtualMachines",
+    "Microsoft.Compute/virtualMachineScaleSets")
+| extend ext = properties.extendedProperties
+| project
+    wasteCategory     = "Underutilized compute (Advisor)",
+    resourceName      = tostring(properties.impactedValue),
+    subscriptionId,
+    detail            = strcat(tostring(ext.currentSku), " -> ", tostring(ext.targetSku)),
+    estMonthlySavings = todouble(ext.savingsAmount),
+    resourceId        = tolower(tostring(properties.resourceMetadata.resourceId))
+| union (
+    resources
+    | where type =~ "microsoft.compute/disks" and tostring(properties.diskState) =~ "Unattached"
+    | project wasteCategory = "Unattached managed disk", resourceName = name,
+              subscriptionId, detail = strcat(tostring(sku.name), " / ",
+              tostring(properties.diskSizeGB), " GiB"),
+              estMonthlySavings = real(null), resourceId = tolower(id)
+  )
+| union (
+    resources
+    | where type =~ "microsoft.network/publicipaddresses"
+    | where isnull(properties.ipConfiguration) and isnull(properties.natGateway)
+    | project wasteCategory = "Unattached public IP", resourceName = name,
+              subscriptionId, detail = tostring(sku.name),
+              estMonthlySavings = real(null), resourceId = tolower(id)
+  )
+| union (
+    resources
+    | where type =~ "microsoft.network/networkinterfaces"
+    | where isnull(properties.virtualMachine) and isnull(properties.privateEndpoint)
+    | where tostring(properties.hostedWorkloads) in ("", "[]")
+    | project wasteCategory = "Orphaned NIC", resourceName = name,
+              subscriptionId, detail = "no attachment",
+              estMonthlySavings = real(null), resourceId = tolower(id)
+  )
+| union (
+    resources
+    | where type =~ "microsoft.web/serverfarms" and toint(properties.numberOfSites) == 0
+    | project wasteCategory = "Empty App Service plan", resourceName = name,
+              subscriptionId, detail = strcat(tostring(sku.tier), " / ", tostring(sku.name)),
+              estMonthlySavings = real(null), resourceId = tolower(id)
+  )
+| order by estMonthlySavings desc
