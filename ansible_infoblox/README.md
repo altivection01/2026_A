@@ -15,8 +15,9 @@ trivial.
      - { destination: partner-portal.com, action: allow, comment: "Approved vendor" }
    ```
    `action: deny` → blacklist (RPZ **Block / NXDOMAIN**), `action: allow` → whitelist (RPZ
-   **Passthru**). `destination` can be a domain or full URL (URLs are reduced to their
-   domain). Add `state: absent` to remove a rule.
+   **Passthru**). `destination` can be a **domain, full URL, IPv4 address, or IPv4 CIDR
+   block** (URLs reduce to their domain; IPs/CIDRs become RPZ-IP rules). Add `state: absent`
+   to remove a rule.
 
 2. **Configure connection once** in [`group_vars/all.yml`](group_vars/all.yml) (vault the
    password): Grid Master URL, WAPI version, admin user/password, and the **RPZ zone** to
@@ -38,19 +39,43 @@ ansible-playbook push_infoblox.yml -e mock=true            # simulate apply
 ansible-playbook push_infoblox.yml -e mock=true --check    # simulate dry run
 ```
 
-## How RPZ rules are encoded (`record:rpz:cname`)
+## How RPZ rules are encoded
+Domains/URLs use `record:rpz:cname` (URLs reduce to their domain):
+
 | action | canonical | RPZ rule |
 |--------|-----------|----------|
 | `deny`  | `""` (empty)        | Block — **No Such Domain (NXDOMAIN)** |
-| `allow` | `<the domain>`      | **Passthru** (allow / exception) |
+| `allow` | `<the name>`        | **Passthru** (allow / exception) |
+
+## Blocking IPs and CIDR blocks (RPZ-IP)
+IPv4 addresses and CIDR blocks are enforced as **RPZ-IP** rules
+(`record:rpz:cname:ipaddress`), which trigger on the **answer IP** of a DNS response. The
+owner name uses the reversed-octet form (prefix + reversed address + `.rpz-ip`) — the module
+encodes it for you:
+
+| You write | RPZ-IP owner name | Rule |
+|-----------|-------------------|------|
+| `203.0.113.66` (single IP = /32) | `32.66.113.0.203.rpz-ip` | Block |
+| `198.51.100.0/24` (CIDR block)   | `24.0.100.51.198.rpz-ip` | Block |
+| `198.51.100.0/24` + `action: allow` | same name             | Passthru |
+
+```yaml
+allowdeny_entries:
+  - { destination: 203.0.113.66,    action: deny, comment: "Scanner host" }       # single IP
+  - { destination: 198.51.100.0/24, action: deny, comment: "Bad hosting range" }  # whole block
+```
+**Safety:** an overly broad CIDR (prefix shorter than `/8`) or a loopback/null address is
+**refused** — RPZ-IP matches resolved answers, so a too-broad block can blackhole far more
+than intended. RPZ-IP filters DNS *answers*; outbound traffic to a hard-coded IP (no DNS
+lookup) remains a firewall job.
 
 ## What the connector enforces (so you don't have to)
 The `infoblox_rpz` module applies guardrails **in code**, on every entry:
 - **Never blocks critical infrastructure** (`microsoft.com`, Windows Update, identity
   providers, etc.) → reported `refused`.
-- **Bare IPs are escalated** → RPZ is domain-based; an IP block needs an **RPZ-IP** rule
-  (`record:rpz:cname:ipaddress`) or the firewall, which this module deliberately does not
-  manage.
+- **IPs and CIDR blocks are supported** via **RPZ-IP** rules
+  (`record:rpz:cname:ipaddress`); an overly broad CIDR (prefix < `/8`) or a loopback/null
+  address is `refused`.
 - **Idempotent, and it flips rules:** re-running an unchanged entry is `exists` (`changed=0`);
   changing an entry from `allow` to `deny` (or vice-versa) **updates** the existing RPZ record
   in place.
@@ -79,7 +104,7 @@ Both follow the identical "edit YAML → push" pattern; the differences are the 
 | Mechanism | Destination Lists (block/allow) | `record:rpz:cname` (NXDOMAIN block / passthru) |
 | Auth | OAuth2 client-credentials | WAPI HTTP Basic to the Grid Master |
 | URL | full URL kept (proxy) | reduced to its **domain** (path-blind) |
-| Bare IP | allow-list only (deny escalates) | **escalated** (RPZ-IP is a separate object) |
+| Bare IP / CIDR | allow-list only (deny escalates) | **RPZ-IP block or allow** (single IP or CIDR) |
 | Vars key | `umbrella_entries` | `allowdeny_entries` |
 
 Run **both** (in their own dirs) to enforce a block/allow across cloud *and* on-prem DNS —
@@ -93,4 +118,4 @@ the hybrid posture, now as two simple, independent playbooks.
 - **GitOps:** keep `allowdeny.yml` in version control and run from CI on merge — the file is
   the auditable source of truth for what's blocked/allowed on-prem.
 - Requires `ansible-core` on the control node. Verified with `--check`, apply, idempotent
-  re-apply, rule-flip update, removal, and `strict` modes.
+  re-apply, rule-flip update, removal, RPZ-IP (single IP + CIDR) blocking, and `strict` modes.

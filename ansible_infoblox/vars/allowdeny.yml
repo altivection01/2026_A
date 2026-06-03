@@ -2,14 +2,16 @@
 # THE FILE YOU EDIT.  Add/remove entries, then run:  ansible-playbook push_infoblox.yml
 #   action: deny  -> blacklist  (RPZ Block / NXDOMAIN rule)
 #   action: allow -> whitelist  (RPZ Passthru rule)
-#   destination:  domain | full URL   (URLs are reduced to their domain; RPZ is path-blind)
+#   destination:  domain | full URL | IPv4 | IPv4 CIDR block
+#                 (URLs are reduced to their domain; IPs/CIDRs become RPZ-IP rules)
 #   state:        present (default) | absent  (absent removes the RPZ rule)
 # Guardrails enforced by the connector:
 #   - a deny on critical infrastructure is REFUSED
-#   - a bare IP is ESCALATED (use an RPZ-IP rule or the firewall — see README)
+#   - an overly broad CIDR (prefix < /8) or a loopback/null address is REFUSED
 # (Same format as ansible_umbrella, except the top-level key is `allowdeny_entries`.)
 # =============================================================================
 allowdeny_entries:
+  # --- domains / URLs (record:rpz:cname) ---
   - destination: malware-c2.example
     action: deny
     comment: "Confirmed C2 (INC0456)"
@@ -22,11 +24,20 @@ allowdeny_entries:
     action: deny
     comment: "Phishing kit (blocked at domain level)"
 
-  # --- these two demonstrate the guardrails (left in deliberately) ---
-  - destination: microsoft.com        # deny on critical infra -> REFUSED
+  # --- IP addresses and blocks (record:rpz:cname:ipaddress / RPZ-IP) ---
+  - destination: 203.0.113.66          # single IP -> 32.66.113.0.203.rpz-ip
+    action: deny
+    comment: "Scanner host (INC0463)"
+
+  - destination: 198.51.100.0/24       # CIDR block -> 24.0.100.51.198.rpz-ip
+    action: deny
+    comment: "Malicious hosting range"
+
+  # --- these demonstrate the guardrails (left in deliberately) ---
+  - destination: microsoft.com         # deny on critical infra -> REFUSED
     action: deny
     comment: "user thinks a popup is malware"
 
-  - destination: 203.0.113.66         # bare IP -> ESCALATED (RPZ-IP / firewall)
+  - destination: 10.0.0.0/4            # overly broad (/4) -> REFUSED
     action: deny
-    comment: "perimeter scanner"
+    comment: "fat-fingered range"
